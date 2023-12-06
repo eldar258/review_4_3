@@ -31,8 +31,13 @@ type Controller struct {
 
 func (c *Controller) Registration(writer http.ResponseWriter, request *http.Request) {
 	dto := &User{}
-	json.NewDecoder(request.Body).Decode(dto)
-	err := c.service.Registration(dto)
+	err := json.NewDecoder(request.Body).Decode(dto)
+	if err != nil {
+		log.Println(err)
+		json.NewEncoder(writer).Encode(err)
+		return
+	}
+	err = c.service.Registration(dto)
 	if err != nil {
 		log.Println(err)
 		json.NewEncoder(writer).Encode(err)
@@ -95,7 +100,7 @@ func createDAO() *DAO {
 }
 
 func migrate(db *sql.DB) {
-	_, err := db.Exec("CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email VARCHAR(30) PRIMARY KEY, password VARCHAR(30), name VARCHAR(30), age INTEGER)")
+	_, err := db.Exec("CREATE TABLE IF NOT EXISTS users (email VARCHAR(30) PRIMARY KEY, password VARCHAR(30), name VARCHAR(30), age INTEGER)")
 	if err != nil {
 		panic(err)
 	}
