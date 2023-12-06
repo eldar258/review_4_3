@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/go-chi/chi/v5"
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"net/http"
@@ -46,6 +47,16 @@ func (c *Controller) Registration(writer http.ResponseWriter, request *http.Requ
 	writer.WriteHeader(http.StatusBadRequest)
 }
 
+func (c *Controller) List(writer http.ResponseWriter, request *http.Request) {
+	users, err := c.service.List()
+	if err != nil {
+		log.Println(err)
+		json.NewEncoder(writer).Encode(err)
+		return
+	}
+	json.NewEncoder(writer).Encode(users)
+}
+
 type Service struct {
 	repository *Repository
 }
@@ -57,6 +68,10 @@ func (s *Service) Registration(dto *User) error {
 	return s.repository.Registration(dto)
 }
 
+func (s *Service) List() ([]*User, error) {
+	return s.repository.List()
+}
+
 type Repository struct {
 	db *DAO
 }
@@ -66,13 +81,27 @@ func (r *Repository) Registration(dto *User) error {
 	return r.db.Add(entity)
 }
 
+func (r *Repository) List() ([]*User, error) {
+	entities, err := r.db.List()
+	if err != nil {
+		return nil, err
+	}
+	return convertEntitiesToDTOs(entities), nil
+}
+
 type DAO struct {
-	sql *sql.DB
+	sql *sqlx.DB
 }
 
 func (d *DAO) Add(entity *Entity) error {
 	_, err := d.sql.Exec("INSERT INTO users(email, password, name, age) VALUES (?, ?, ?, ?)", entity.Email, entity.Password, entity.Name, entity.Age)
 	return err
+}
+
+func (d *DAO) List() ([]*Entity, error) {
+	var res []*Entity
+	err := d.sql.Select(&res, "SELECT * FROM users")
+	return res, err
 }
 
 func main() {
@@ -96,7 +125,7 @@ func createRepository() *Repository {
 func createDAO() *DAO {
 	sql := connectSQL()
 	migrate(sql)
-	return &DAO{sql: sql}
+	return &DAO{sql: sqlx.NewDb(sql, "sqlite")}
 }
 
 func migrate(db *sql.DB) {
@@ -117,6 +146,7 @@ func connectSQL() *sql.DB {
 func createRoute(controller *Controller) *chi.Mux {
 	route := chi.NewRouter()
 	route.Post("/registration", controller.Registration)
+	route.Get("/list", controller.List)
 	return route
 }
 
@@ -128,6 +158,14 @@ func convertDTOToEntity(dto *User) *Entity {
 		Name:     dto.Name,
 		Age:      dto.Age,
 	}
+}
+
+func convertEntitiesToDTOs(entities []*Entity) []*User {
+	users := make([]*User, len(entities))
+	for i := range entities {
+		users[i] = convertEntityToDTO(entities[i])
+	}
+	return users
 }
 
 func convertEntityToDTO(entity *Entity) *User {
